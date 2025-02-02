@@ -1,150 +1,439 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Presensi UNNES</title>
-    <style>
-        body {
+    <title>Sistem Presensi UNNES</title>
+    <style media="screen">
+        body, h1, p {
             margin: 0;
-            font-family: Arial, sans-serif;
+            padding: 0;
+            font-family: Arial;
+        }
+
+        .header {
             display: flex;
-            min-height: 100vh; /* Ensure the body takes at least the full viewport height */
+            align-items: center;
+            padding: 20px;
+            background-color: #343a40;
+        }
+
+        .header-image {
+            max-width: 75px;
+            max-height: 75px;
+            width: auto;
+            height: auto;
+            margin-right: 20px;
+        }
+
+        .header-text {
+            text-align: center;
+            color: #fff;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .camera-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
             flex-direction: column;
         }
 
-        .container {
-            display: flex; /* Use flexbox layout */
-            flex: 1; /* Grow to fill available space */
+        #ambil-gambar {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            background-color: #007bff;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-top: 10px;
         }
 
-        .left {
-            flex: 0 0 80%; /* Do not grow or shrink, initial size 80% of container */
-            background-color: #000;
-            padding: 20px;
-            box-sizing: border-box; /* Include padding in width/height calculations */
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        #ambil-gambar:hover {
+            background-color: #0056b3;
         }
 
-        .right {
-            flex: 0 0 20%; /* Do not grow or shrink, initial size 20% of container */
-            background-color: #333333;
-            padding: 20px;
-            box-sizing: border-box; /* Include padding in width/height calculations */
-            display: flex;
-            flex-direction: column; /* Stack child elements vertically */
+        #video-webcam {
+            width: 1000px; /* Adjust width as needed */
+            height: 600px; /* Maintain aspect ratio */
         }
 
-        .gambar {
-            flex: 0 0 30%; /* Set the height of the gambar container to 30% */
-        }
-
-        .gambar img{
-          width: 30%;
-        }
-
-        .info-container {
-            flex: 0 0 70%; /* Set the height of the info container to 70% */
-            background-color: #fff; /* Background color for the section container */
-            text-align: center; /* Center-align the content */
-        }
-
-        .video-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: fit-content;
-            height: min-content;
-            overflow: hidden; /* Ensure content does not overflow */
-        }
-
-        .video-container img {
-            width: 95%; /* Ensure the image fills the container width */
-        }
-
-        #gambar {
+        .hasil {
+          display: none;
+          justify-content: center;
+          align-items: center;
+          position: fixed;
+          top: 0;
+          left: 0;
           width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.5); /* semi-transparent background */
+          z-index: 1;
+        }
+
+        .final {
+          display: none;
+          justify-content: center;
+          align-items: center;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.5); /* semi-transparent background */
+          z-index: 1;
+        }
+
+        .hasil-table{
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background-color: #f9f9f9;
+          padding: 20px;
+          border-radius: 5px;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .final-paper{
+          background-color: #f9f9f9;
+          padding: 20px;
+          border-radius: 5px;
+          text-align: center;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
         tr{
-          margin: 10px 0;
+          margin: 5px 0;
         }
 
-        table{
-          text-align: left;
-          padding: 5px;
+        #gambar-hasil{
+          width: 500px;
+          height: 400px;
+        }
+
+        .button-container {
+          display: flex;
+          gap: 10px; /* Adjust the gap between buttons as needed */
+        }
+
+        .button-container button {
+          padding: 10px 20px; /* Adjust padding as needed */
+          cursor: pointer;
+          border: none;
+          border-radius: 5px;
+          font-weight: bold;
+          text-transform: uppercase;
+          transition: background-color 0.3s, color 0.3s;
+        }
+
+        #yesButton {
+          background-color: #4CAF50;
+          color: white;
+        }
+
+        #noButton {
+          background-color: #f44336;
+          color: white;
+        }
+
+        #nimFinal {
+          padding: 10px;
+          border: 1px solid #ccc;
+          border-radius: 5px;
+          font-size: 16px;
+          width: 200px;
+          box-sizing: border-box; /* Ensure padding and border are included in the width */
+          margin-bottom: 10px;
+        }
+
+        .error-message {
+          color: #ff0000;
+          font-size: 14px;
+          margin-top: 5px;
         }
     </style>
 </head>
+
 <body>
-    <div class="container">
-        <div class="left">
-          <div class="video-container">
-              <img src="{{ url_for('video_feed') }}" alt="Camera Feed">
-          </div>
+    <header class="header">
+        <img src="{{url_for('static', filename='images/Logo_Unnes.png')}}" alt="Header Image" class="header-image">
+        <div class="header-text">
+            <h1>Sistem Presensi UNNES</h1>
         </div>
-        <div class="right">
-          <div class="gambar">
-            <img src="{{url_for('static', filename='images/Logo_Unnes.png')}}" alt="Logo UNNES">
-          </div>
-          <div class="info-container">
-            <!-- Additional information goes here -->
-            <img src="" alt="No Image Found" id=gambar>
-            <table>
-              <tr>
-                <td>Nama </td>
-                <td>:</td>
-                <td id="nama">---</td>
-              </tr>
-              <tr>
-                <td>Kemiripan </td>
-                <td>:</td>
-                <td id="mirip">---</td>
-              </tr>
-              <tr>
-                <td>Waktu </td>
-                <td>:</td>
-                <td>---</td>
-              </tr>
-            </table>
-          </div>
-        </div>
+    </header>
+    <div class="camera-container">
+        <video autoplay="true" id="video-webcam">
+        </video>
+        <button id="ambil-gambar">Ambil Gambar</button>
+        <div id="loading-indicator" style="display: none; margin-top: 10px; font-size: 30px; font-weight: bold;">Loading...</div>
     </div>
 
-    <script>
-        var nama = document.getElementById("nama");
-        var gambar = document.getElementById('gambar');
-        var mirip = document.getElementById('mirip');
-        // Function to fetch JSON data and update the HTML content
-        function fetchData() {
-            fetch('/json_data')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    // Check if data is available
-                    if (data.message === 'Available') {
-                        // Get the name from the JSON data
-                        nama.innerHTML = data.Name;
-                        gambar.src = data.Img;
-                        mirip.innerHTML = data.Similarity + "%";
-                      }
-                })
-                .catch(error => {
-                    console.error('Error fetching JSON data:', error);
-                });
+
+    <div class="hasil", id="hasil">
+      <div class="hasil-table">
+        <table>
+          <tr>
+            <img src="" id="gambar-hasil" style='margin:10px'>
+          </tr>
+          <tr>
+            <td>Name</td>
+            <td id="nama">: -</td>
+          </tr>
+          <tr>
+            <td>Time</td>
+            <td id="time">: -</td>
+          </tr>
+          <tr>
+            <td>Date</td>
+            <td id="date">: -</td>
+          </tr>
+          <tr>
+            <td>NIM</td>
+            <td id='nim'>: -</td>
+          </tr>
+          <tr>
+            <td>Email</td>
+            <td id="email">: -</td>
+          </tr>
+          <tr>
+            <td>Study Program</td>
+            <td id="study_program">: -</td>
+          </tr>
+          <tr>
+            <td>Batch Year</td>
+            <td id="batch_year">: -</td>
+          </tr>
+          <tr>
+            <td>Project</td>
+            <td id="project">: -</td>
+          </tr>
+          <tr>
+            <td><br><br></td>
+          </tr>
+          <tr>
+            <td style="margin-top:10px;" colspan=2>Apakah benar ini data anda?</td>
+          </tr>
+          <tr>
+            <td colspan=2>
+              <div class="button-container">
+                <button type="button" id="yesButton">Yes</button>
+                <button type="button" id="noButton" onclick="toggleNewDiv()">No</button>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="final" id='final'>
+      <div class="final-paper">
+        <label for="nama" style="font-size: 18px;">Mohon maaf atas kesalahannya <br> Silahkan masukkan nimmu:</label> <br> <br>
+        <input type="text" id="nimFinal" name="nim" placeholder="NIM">
+        <div id="nim-error" class="error-message"></div>
+        <br><br>
+        <button type="button" id="submitFinal" style="padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; background-color: #4CAF50; color: white;">Submit</button>
+        <button type="button" id="cancelFinal" onclick="goback()" style="padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; background-color: #ff4c4c; color: white; margin-left: 10px;">Cancel</button>
+      </div>
+    </div>
+
+
+
+    <script type="text/javascript">
+        var video = document.querySelector("#video-webcam");
+
+        navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia || navigator.oGetUserMedia;
+         if (navigator.getUserMedia) {
+             navigator.getUserMedia({
+                 video: {
+                     width: { ideal: 4096 }, // Set the ideal width to a high value
+                     height: { ideal: 2160 } // Set the ideal height to a high value
+                 }
+             }, handleVideo, videoError);
+         }
+
+        function handleVideo(stream) {
+            video.srcObject = stream;
         }
 
-        // Call the fetchData function initially
-        fetchData();
+        function videoError(e) {
+            alert("Izinkan menggunakan kamera")
+        }
+      </script>
 
-        // Call the fetchData function periodically (every 5 seconds)
-        setInterval(fetchData, 2500); // Adjust the interval as needed (in milliseconds)
-    </script>
-</body>
+
+      <script type="text/javascript">
+          const loadingIndicator = document.getElementById('loading-indicator');
+          const ambilGambarButton = document.getElementById('ambil-gambar');
+          const TampilHasil = document.getElementById('hasil');
+          const YesButtonForm = document.getElementById('yesButton');
+          const FinalDiv = document.getElementById("final");
+          const SubmitFinal = document.getElementById("submitFinal");
+          var data_nama = document.getElementById('nama');
+          var data_nim = document.getElementById('nim');
+          var data_email = document.getElementById("email");
+          var data_gambar = document.getElementById("gambar-hasil");
+          var data_time = document.getElementById("time");
+          var data_date = document.getElementById('date');
+          var data_programstudi = document.getElementById('study_program');
+          var data_batchyear = document.getElementById('batch_year');
+          var data_project = document.getElementById('project');
+          var nim_sekarang = "";
+          var gambar_sekarang = "";
+          var nilai_threshold = "";
+          var nama_sekarang = "";
+          var tanggal_sekarang = "";
+          var waktu_sekarang = "";
+
+
+          YesButtonForm.addEventListener('click', async () => {
+            TampilHasil.style.display = 'none';
+            try {
+                const formData = new FormData();
+                formData.append('nim', nim_sekarang);
+                formData.append("Gambar", gambar_sekarang);
+                formData.append("Kondisi", "Benar");
+                formData.append("Threshold", nilai_threshold);
+                formData.append("Nama", nama_sekarang);
+                formData.append("Tanggal", tanggal_sekarang);
+                formData.append("Waktu", waktu_sekarang);
+
+                const response = await fetch('/hasil', {
+                    method: 'POST',
+                    body: formData
+                });
+                alert("Data anda akan disimpan");
+                loadingIndicator.style.display = 'none';
+                ambilGambarButton.style.display = "block";
+                nim_sekarang = "";
+                gambar_sekarang = "";
+                nilai_threshold = "";
+                nama_sekarang = "";
+                tanggal_sekarang = "";
+                waktu_sekarang = "";
+            } catch (error) {
+                console.error('Error sending data:', error);
+            }
+          })
+
+
+
+          SubmitFinal.addEventListener('click', async () => {
+            var nimInput = document.getElementById("nimFinal");
+            var nimError = document.getElementById("nim-error");
+            var nimValue = nimInput.value;
+
+            if (!nimValue || !/^\d+$/.test(nimValue)) {
+              nimError.textContent = "NIM harus berupa angka";
+              nimInput.focus(); // Focus on the input field
+              return;
+            }
+            else {
+              nimError.textContent = "";
+              nimInput.value = "";
+              FinalDiv.style.display = "none";
+              nim_sekarang = nimValue;
+              try {
+                  const formData = new FormData();
+                  formData.append('nim', nim_sekarang);
+                  formData.append("Gambar", gambar_sekarang);
+                  formData.append("Kondisi", "Salah");
+                  formData.append("Threshold", nilai_threshold);
+                  formData.append("Nama", nama_sekarang);
+                  formData.append("Tanggal", tanggal_sekarang);
+                  formData.append("Waktu", waktu_sekarang);
+
+                  const response = await fetch('/hasil', {
+                      method: 'POST',
+                      body: formData
+                  });
+                  alert("Data anda akan disimpan");
+                  loadingIndicator.style.display = 'none';
+                  ambilGambarButton.style.display = "block";
+                  nim_sekarang = "";
+                  gambar_sekarang = "";
+                  nilai_threshold = "";
+                  nama_sekarang = "";
+                  tanggal_sekarang = "";
+                  waktu_sekarang = "";
+              } catch (error) {
+                  console.error('Error sending data:', error);
+              }
+            }
+          })
+
+
+
+          ambilGambarButton.addEventListener('click', async () => {
+              ambilGambarButton.style.display = "none"; // Disable the button
+              loadingIndicator.style.display = 'block';
+              try {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = video.videoWidth;
+                  canvas.height = video.videoHeight;
+                  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                  const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+                  const formData = new FormData();
+                  formData.append('image', imageBlob);
+
+                  const response = await fetch('/proses', {
+                      method: 'POST',
+                      body: formData
+                  });
+
+                  const responseData = await response.json();
+
+                  if (responseData.msg === "Success") {
+                    gambar_sekarang = responseData.data.img;
+                    nilai_threshold = responseData.data.threshold;
+                    nama_sekarang = responseData.data.nama;
+                    nim_sekarang = responseData.data.nim;
+                    tanggal_sekarang = responseData.data.tanggal;
+                    waktu_sekarang = responseData.data.waktu;
+                    TampilHasil.style.display = 'flex';
+                    data_time.innerHTML = ": " + responseData.data.waktu
+                    data_date.innerHTML = ": " + responseData.data.tanggal
+                    data_nama.innerHTML = ": " + responseData.data.nama;
+                    data_nim.innerHTML = ": " + responseData.data.nim;
+                    data_email.innerHTML = ": " + responseData.data.email;
+                    data_batchyear.innerHTML = ": " + responseData.data.batch_year;
+                    data_programstudi.innerHTML = ": " + responseData.data.study_program;
+                    data_gambar.src = responseData.data.img;
+                  }
+
+                  else if (responseData.msg === "Threshold_Rendah"){
+                    alert("Mohon maaf, Threshold berada di bawah 90%, silahkan ulangi");
+                    ambilGambarButton.style.display = "block";
+                    loadingIndicator.style.display = 'none';
+                  }
+
+                  else{
+                    alert("Mohon maaf, wajah anda tidak terdeteksi, silahkan ulangi");
+                    ambilGambarButton.style.display = "block";
+                    loadingIndicator.style.display = 'none';
+                  }
+              } catch (error) {
+                  console.error('Error capturing and sending image:', error);
+              }
+          });
+
+          function toggleNewDiv(){
+            FinalDiv.style.display = "flex";
+            TampilHasil.style.display = 'none';
+          }
+
+          function goback(){
+              FinalDiv.style.display = "none";
+              loadingIndicator.style.display = 'none';
+              ambilGambarButton.style.display = "block";
+          }
+      </script>
+
+    </body>
 </html>
