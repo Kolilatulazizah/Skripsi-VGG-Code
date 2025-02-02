@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presensi UNNES</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            min-height: 100vh; /* Ensure the body takes at least the full viewport height */
+            flex-direction: column;
+        }
+
+        .container {
+            display: flex; /* Use flexbox layout */
+            flex: 1; /* Grow to fill available space */
+        }
+
+        .left {
+            flex: 0 0 80%; /* Do not grow or shrink, initial size 80% of container */
+            background-color: #000;
+            padding: 20px;
+            box-sizing: border-box; /* Include padding in width/height calculations */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .right {
+            flex: 0 0 20%; /* Do not grow or shrink, initial size 20% of container */
+            background-color: #333333;
+            padding: 20px;
+            box-sizing: border-box; /* Include padding in width/height calculations */
+            display: flex;
+            flex-direction: column; /* Stack child elements vertically */
+        }
+
+        .gambar {
+            flex: 0 0 30%; /* Set the height of the gambar container to 30% */
+        }
+
+        .gambar img{
+          width: 30%;
+        }
+
+        .info-container {
+            flex: 0 0 70%; /* Set the height of the info container to 70% */
+            background-color: #fff; /* Background color for the section container */
+            text-align: center; /* Center-align the content */
+        }
+
+        .video-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: fit-content;
+            height: min-content;
+            overflow: hidden; /* Ensure content does not overflow */
+        }
+
+        .video-container img {
+            width: 95%; /* Ensure the image fills the container width */
+        }
+
+        #gambar {
+          width: 100%;
+        }
+
+        tr{
+          margin: 10px 0;
+        }
+
+        table{
+          text-align: left;
+          padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left">
+          <div class="video-container">
+              <img src="{{ url_for('video_feed') }}" alt="Camera Feed">
+          </div>
+        </div>
+        <div class="right">
+          <div class="gambar">
+            <img src="{{url_for('static', filename='images/Logo_Unnes.png')}}" alt="Logo UNNES">
+          </div>
+          <div class="info-container">
+            <!-- Additional information goes here -->
+            <img src="" alt="No Image Found" id=gambar>
+            <table>
+              <tr>
+                <td>Nama </td>
+                <td>:</td>
+                <td id="nama">---</td>
+              </tr>
+              <tr>
+                <td>Kemiripan </td>
+                <td>:</td>
+                <td id="mirip">---</td>
+              </tr>
+              <tr>
+                <td>Waktu </td>
+                <td>:</td>
+                <td>---</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+    </div>
+
+    <script>
+        var nama = document.getElementById("nama");
+        var gambar = document.getElementById('gambar');
+        var mirip = document.getElementById('mirip');
+        // Function to fetch JSON data and update the HTML content
+        function fetchData() {
+            fetch('/json_data')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Check if data is available
+                    if (data.message === 'Available') {
+                        // Get the name from the JSON data
+                        nama.innerHTML = data.Name;
+                        gambar.src = data.Img;
+                        mirip.innerHTML = data.Similarity + "%";
+                      }
+                })
+                .catch(error => {
+                    console.error('Error fetching JSON data:', error);
+                });
+        }
+
+        // Call the fetchData function initially
+        fetchData();
+
+        // Call the fetchData function periodically (every 5 seconds)
+        setInterval(fetchData, 2500); // Adjust the interval as needed (in milliseconds)
+    </script>
+</body>
+</html>
