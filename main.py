@@ -1,229 +1,263 @@
-from flask import Flask, request, render_template
-from pymongo import MongoClient
+from flask import Flask, render_template, Response, jsonify
 import cv2
-from PIL import Image
 import numpy as np
-import base64
+import mediapipe as mp
+import time
+import math
 from keras.models import load_model
 from tensorflow.keras.utils import img_to_array
 from mtcnn import MTCNN
-import time
+import json
+import pyttsx3
 import os
-import datetime
+import threading
+import base64
 from telebot import *
 import threading
-import json
-from io import BytesIO
+import datetime
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-app = Flask(__name__)
-
-client = MongoClient("<MONGODB_URL>")
-api = "<TELEGRAM_API>"
+api = "<TELEGRAM_BOT_API>"
 bot = TeleBot(api)
-id_admin = "<ADMIN_ID>"
-
-
-detector = MTCNN()
-
-model = load_model('HasilTrainingvgg_kelas40_10.h5', compile=False)
-Label_Nama = json.load(open("model_kelas40_10.json"))
-
 
 def telegram_polling_thread():
-    @bot.message_handler(commands=["ADDID"])
-    def tambahid(message):
-
-        db = client['datapresensi']
-        collection = db['telegram_id_data']
-        data = message.text.replace("/ADDID", "").strip()
-
-        if data != "":
-            query = {"Nama": data}
-            existing_doc = collection.find_one(query)
-            if existing_doc:
-                bot.send_message(message.chat.id, f"ID anda sudah tersimpan dalam database, berikut ID telegram anda\nID: {message.chat.id}\n")
-            else:
-                data = {
-                    "TeleID": str(message.chat.id),
-                    "Nama": data
-                }
-                # Insert the new document into the collection
-                collection.insert_one(data)
-                bot.send_message(message.chat.id, f"ID: {message.chat.id}\nID anda telah tersimpan")
-        else:
-            bot.send_message(message.chat.id, f"Mohon gunakan format berikut\n\n /ADDID <nama_anda>")
-
-    @bot.message_handler(commands=["rekapdata"])
-    def rekapdata(message):
-
-        db = client['datapresensi']
-        collection1 = db['telegram_id_data']
-        collection2 = db['log']
-
-        query1 = {"TeleID": str(message.chat.id)}
-        telegram_doc = collection1.find_one(query1)
-        if telegram_doc:
-            bulan = time.strftime('%m')
-            tahun = time.strftime('%Y')
-            query2 = {"Nama":telegram_doc["Nama"], "Tahun":tahun, "Bulan":bulan}
-            presensi_log = collection2.find(query2)
-            if presensi_log:
-                total_waktu_data = 0
-                for data in presensi_log:
-                    total_waktu = data.get("Total_waktu")
-                    hours, minutes, seconds = map(int, total_waktu.split(':'))
-                    total_waktu_data += (hours * 3600) + (minutes * 60) + seconds
-                bot.send_message(message.chat.id, f'Rekap data {telegram_doc["Nama"]} di bulan {bulan} tahun {tahun} \nAnda telah masuk selama {total_waktu_data//3600} jam pada bulan ini')
-            else:
-                bot.send_message(message.chat.id, f'Rekap data {telegram_doc["Nama"]} di bulan {bulan} tahun {tahun} \nAnda telah masuk selama 0 jam pada bulan ini')
+    @bot.message_handler(commands=["cekID"])
+    def awal(message):
+        bot.send_message(message.chat.id, f"ID: {message.chat.id}")
     bot.polling()
 
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
 
+gambar = mp.solutions.drawing_utils
+tangan = mp.solutions.hands
+
+
+
+detector = MTCNN()
+model = load_model(r'HasilTrainingvgg_Epoch_04.h5', compile=False)
+Label_Nama = json.load(open(r"model_kelas50.json"))
+
+
+end_presensi = 0
+start_presensi = 0
+elapsed_time = 0
+presensi = []
+hasil_gambar = None
+
+def calculate_distance(p1, p2):
+    return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+
+def proses_presensi(image, pointx, pointy):
+    data_point = {}
+    check_point = []
+    img = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    print(len(detector.detect_faces(img)))
+    if len(detector.detect_faces(img)) > 0:
+        for idx, face in enumerate(detector.detect_faces(img)):
+            data = face["box"]
+            x = data[0]
+            y = data[1]
+            w = data[2]
+            h = data[3]
+            middle_pointx, middle_pointy = int(x+(w//2)), int(y+(h//2))
+            jarak = calculate_distance((pointx, pointy), (middle_pointx, middle_pointy))
+            data_point[idx] = [x, y, w, h]
+            check_point.append(jarak)
+
+        min_index = check_point.index(min(check_point))
+        x, y, w, h = data_point[min_index]
+        wajah = img[y:y+h,x:x+w]
+        cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+        wajah = cv2.resize(wajah,(224, 224))
+        if np.sum([wajah])!=0:
+            wajah = (wajah.astype('float')/127.5) - 1
+            wajah = img_to_array(wajah)
+            wajah = np.expand_dims(wajah,axis=0)
+            prediksi_nama = model.predict(wajah)[0]
+            label=Label_Nama[prediksi_nama.argmax()]
+            cv2.putText(img, label, (x, y-2),cv2.FONT_HERSHEY_SIMPLEX, 1, (255,150,71), 4)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            _, encoded_img = cv2.imencode('.png', img)
+            base64_img = base64.b64encode(encoded_img).decode('utf-8')
+            data_uri = 'data:image/jpeg;base64,' + base64_img
+            return img, label, data_uri, str(round(max(prediksi_nama) * 100, 3))
+        return None
+
+
+
+# Function to speak asynchronously
+def speak_async(text):
+    engine = pyttsx3.init()
+    engine.setProperty('voice', r'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\MSTTS_V110_idID_Andika')
+    engine.say(text)
+    engine.runAndWait()
+    engine.stop()
+
+
+app = Flask(__name__)
+
+def presensi_wajah():
+    global hasil_gambar
+    label = ""
+    try:
+        cap = cv2.VideoCapture(1)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)  # Set the width
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        with tangan.Hands(model_complexity=0,
+                          max_num_hands=1,
+                          static_image_mode=False,
+                          min_detection_confidence=0.5,
+                          min_tracking_confidence=0.5) as hands:
+
+            while cap.isOpened():
+                count = 0
+                marklist = []
+                _, img = cap.read()
+                img = cv2.flip(img, 1)
+                image1 = img.copy()
+                image = img.copy()
+                if img is None:
+                    break
+
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img.flags.writeable = False
+                hasil = hands.process(img)
+
+                if hasil.multi_handedness:
+                    label = hasil.multi_handedness[0].classification[0].label
+                    if label == "Left":
+                        label = "Right"
+                    elif label == "Right":
+                        label = "Left"
+
+                if hasil.multi_hand_landmarks:
+                    for num, hand in enumerate(hasil.multi_hand_landmarks):
+                        gambar.draw_landmarks(image, hand, tangan.HAND_CONNECTIONS)
+                    bBox = cv2.boundingRect(np.array([[landmark.x * img.shape[1], landmark.y * img.shape[0]]
+                                                     for landmark in hand.landmark]).astype(np.int32))
+                    center_x = int(bBox[0] + int(bBox[2]//2))
+                    center_y = int(bBox[1] + int(bBox[3]//2))
+
+                    hand = hasil.multi_hand_landmarks[0]
+                    for id, landMark in enumerate(hand.landmark):
+                        imgH, imgW, imgC = img.shape
+                        xPos, yPos = int(landMark.x * imgW), int(landMark.y * imgH)
+                        marklist.append([id, xPos, yPos, label])
+
+                if len(marklist) != 0:
+                    if marklist[4][3] == "Right" and marklist[4][1] > marklist[3][1]:  # Right Thumb
+                        count = count + 1
+                    elif marklist[4][3] == "Left" and marklist[4][1] < marklist[3][1]:  # Left Thumb
+                        count = count + 1
+                    if marklist[8][2] < marklist[6][2]:  # Index finger
+                        count = count + 1
+                    if marklist[12][2] < marklist[10][2]:  # Middle finger
+                        count = count + 1
+                    if marklist[16][2] < marklist[14][2]:  # Ring finger
+                        count = count + 1
+                    if marklist[20][2] < marklist[18][2]:  # Little finger
+                        count = count + 1
+
+                img.flags.writeable = True
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+                cv2.putText(image, f"Count: {count}", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+                if count == 5:
+                    elapsed_time = time.time() - start_time
+                    lama_detik = 2
+                    if elapsed_time < lama_detik:
+                        loading_percentage = int((elapsed_time / lama_detik) * 100)
+                        cv2.putText(image, f"{loading_percentage}%", (center_x, center_y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 4)
+
+                        radius = 50
+                        loading_angle = int((elapsed_time / lama_detik) * 360)
+                        cv2.ellipse(image, (center_x+30, center_y-10), (radius, radius), 0, 0, loading_angle, (0, 255, 0), 6)
+
+                    elif elapsed_time >= lama_detik:
+                        elapsed_time = 0
+                        hasil_gambar = proses_presensi(img, marklist[9][1], marklist[9][2])
+                        if hasil_gambar is not None:
+                            if float(hasil_gambar[3]) >= 10:
+                                if not hasil_gambar[1] in presensi:
+                                    presensi.append(hasil_gambar[1])
+                                    start_presensi = time.time()
+                                    threading.Thread(target=speak_async, args=(f"Selamat datang {hasil_gambar[1]}",)).start()
+                                    waktu = time.strftime("%H:%M:%S")
+                                    tanggal=time.strftime("%d/%m/%Y")
+                                    label = hasil_gambar[1]
+                                    skor = hasil_gambar[3]
+                                    gambar_bbox = hasil_gambar[0]
+                                    _, encoded_img = cv2.imencode('.jpg', gambar_bbox)
+                                    frame = encoded_img.tobytes()
+                                    bot.send_photo("<ID_ADMIN_1>", photo=frame, caption=f"{tanggal} -- {waktu}\n\nPresensi atas nama {label}\nSimilarity: {skor}")
+                                    bot.send_photo("<ID_ADMIN_2>", photo=frame, caption=f"{tanggal} -- {waktu}\n\nPresensi atas nama {label}\nSimilarity: {skor}")
+
+                                    cv2.imwrite(f"Hasil/{tanggal.replace('/', '')}_{waktu.replace(':', '')}.png", image1)
+                                    cv2.imwrite(f"Hasil bbox/{tanggal.replace('/', '')}_{waktu.replace(':', '')}.png", gambar_bbox)
+
+                                else:
+                                    start_presensi = time.time()
+                                    threading.Thread(target=speak_async, args=(f"{hasil_gambar[1]} telah melakukan presensi",)).start()
+                                    waktu = time.strftime("%H:%M:%S")
+                                    tanggal=time.strftime("%d/%m/%Y")
+                                    label = hasil_gambar[1]
+                                    skor = hasil_gambar[3]
+                                    gambar_bbox = hasil_gambar[0]
+                                    _, encoded_img = cv2.imencode('.jpg', gambar_bbox)
+                                    frame = encoded_img.tobytes()
+                                    bot.send_photo("<ID_ADMIN_1>", photo=frame, caption=f"{tanggal} -- {waktu}\n\n telah melakukan presensi {label}\nSimilarity: {skor}")
+                                    bot.send_photo("<ID_ADMIN_2>", photo=frame, caption=f"{tanggal} -- {waktu}\n\n telah melakukan presensi {label}\nSimilarity: {skor}")
+
+                                    cv2.imwrite(f"Hasil/{tanggal.replace('/', '')}_{waktu.replace(':', '')}.png", image1)
+                                    cv2.imwrite(f"Hasil bbox/{tanggal.replace('/', '')}_{waktu.replace(':', '')}.png", gambar_bbox)
+                            else:
+                                #pass
+                                threading.Thread(target=speak_async, args=(f"kemiripan anda berada di bawah 90 persen, silahkan ulangi",)).start()
+
+
+                else:
+                    start_time = time.time()
+                end_presensi = time.time()
+                ret, buffer = cv2.imencode('.jpg', image)
+                frame = buffer.tobytes()
+
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+    except Exception as e:
+        print(e)
 
 
 @app.route("/")
 def awal():
     return render_template("index.html")
 
-@app.route("/proses", methods=["POST"])
-def proses():
-    gambar = request.files['image']
-    img = Image.open(gambar.stream)
+@app.route('/video_feed')
+def video_feed():
+    return Response(presensi_wajah(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    img = img.convert("RGB")
-    img = np.asarray(img)
-    umt_img = cv2.UMat(img)
-    if len(detector.detect_faces(img)) > 0:
-        data = detector.detect_faces(img)[0]['box']
-        x = data[0]
-        y = data[1]
-        w = data[2]
-        h = data[3]
-        wajah = img[y:y+h,x:x+w]
-        cv2.rectangle(umt_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
-
-        wajah = cv2.resize(wajah,(224, 224))
-        if np.sum([wajah])!=0:
-            wajah = (wajah.astype('float')/127.5)-1
-            wajah = img_to_array(wajah)
-            wajah = np.expand_dims(wajah,axis=0)
-            prediksi_nama = model.predict(wajah)[0]
-            threshold_nama = str(round(max(prediksi_nama), 3))
-            if max(prediksi_nama) > 0.1:
-                label=Label_Nama[prediksi_nama.argmax()]
-                cv2.putText(umt_img, label, (x, y-3), cv2.FONT_HERSHEY_SIMPLEX, 2,  (0, 255, 0), 2, cv2.LINE_AA, False)
-            else:
-                return {"msg":"Threshold_Rendah"}
-
-        img = umt_img.get()
-        image = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        _, encoded_img = cv2.imencode('.jpg', image)
-        base64_img = base64.b64encode(encoded_img).decode('utf-8')
-        data_uri = 'data:image/jpeg;base64,' + base64_img
-
-        db = client['datapresensi']
-        collection = db['nama_nim_batch3']
-        label_data = collection.find_one({"Nama":label})
-        if label_data is None:
-            label_data = {}
-        nim = label_data.get("NIM", "-")
-        email = label_data.get("email", "-")
-        study_program = label_data.get("study_program", "-")
-        batch_year = label_data.get("batch_year", "-")
-        project = label_data.get("project", "-")
-        waktu = time.strftime("%H:%M:%S")
-        tanggal=time.strftime("%d/%m/%Y")
-        return {
-                "msg":"Success",
-                "data":{
-                    "img":data_uri,
-                    "waktu":waktu,
-                    "tanggal":tanggal,
-                    "nama":label,
-                    "nim":nim,
-                    "email":email,
-                    "study_program":study_program,
-                    "batch_year":batch_year,
-                    "project":project,
-                    "threshold":threshold_nama
-                    }
-                }
-    return {"msg":"Failed"}
-
-
-
-
-@app.route('/hasil', methods=["POST"])
-def hasil():
-    nim = request.form["nim"].strip()
-    gambar = request.form["Gambar"]
-    kondisi = request.form["Kondisi"]
-    nilai_threshold = request.form["Threshold"]
-    nama_lama = request.form["Nama"]
-    tanggal = request.form["Tanggal"]
-    waktu = request.form["Waktu"]
-
-    db = client['datapresensi']
-    collection = db['nama_nim_batch3']
-    label_data = collection.find_one({"NIM":nim})
-    if label_data is None:
-        label_data = {}
-    data_nama = label_data.get('Nama', '-')
-    _, base64_string = gambar.split(',')
-    image_data = base64.b64decode(base64_string)
-    image = Image.open(BytesIO(image_data))
-    if kondisi == "Benar":
-        image.save(f"./Hasil_data/Benar/{data_nama}_{nilai_threshold}.jpg")
+@app.route('/json_data')
+def data_json():
+    global hasil_gambar
+    if hasil_gambar is not None:  # Assuming hasil_gambar is the variable containing the data you want to jsonify
+        data1, data2, data3 = hasil_gambar[1], hasil_gambar[2], hasil_gambar[3]
+        hasil_gambar = None
+        return jsonify(
+            {
+                "message": "Available",
+                "Name": data1,
+                "Img": data2,
+                "Similarity": data3
+            })
     else:
-        image.save(f"./Hasil_data/Salah/{nama_lama}_{data_nama}_{nilai_threshold}.jpg")
-
-
-    db1 = client['datapresensi']
-    collection1 = db1['log']
-
-    tanggal_db, bulan_db, tahun_db = tanggal.split("/")
-
-    query = {"Nama": data_nama, "Tanggal": tanggal_db, "Bulan": bulan_db, "Tahun": tahun_db}
-    existing_doc1 = collection1.find_one(query)
-    if existing_doc1:
-        new_waktu_list = existing_doc1.get("Waktu")
-        new_waktu_list.append(waktu)
-        start = datetime.strptime(new_waktu_list[0], "%H:%M:%S")
-        end = datetime.strptime(new_waktu_list[-1], "%H:%M:%S")
-        total_waktu = str(end-start)
-        collection1.update_one(query, {"$set": {"Waktu": new_waktu_list, 'Total_waktu': total_waktu}})
-    else:
-        data = {
-            "Nama": data_nama,
-            "Tanggal": tanggal_db,
-            "Bulan": bulan_db,
-            "Tahun": tahun_db,
-            "Waktu": [waktu],  # Create a new list containing only the new waktu value
-            "Total_waktu": "0"
-        }
-        # Insert the new document into the collection
-        collection1.insert_one(data)
-    collection2 = db1["telegram_id_data"]
-    query1 = {"Nama": data_nama}
-    existing_doc2 = collection2.find_one(query1)
-    existing_doc1 = collection1.find_one(query)
-    bot.send_photo(id_admin, photo=image_data, caption=f"Notifikasi Admin\n{tanggal} -- {waktu}\n\nPresensi atas nama {data_nama}\n\nModel Kelas 40_2")
-    if existing_doc2:
-        if len(existing_doc1.get("Waktu")) == 1:
-            bot.send_photo(existing_doc2.get("TeleID"), photo=image_data, caption=f"{tanggal} -- {waktu}\n\nPresensi kedatangan atas nama {data_nama}")
-        else:
-            bot.send_photo(existing_doc2.get("TeleID"), photo=image_data, caption=f"{tanggal} -- {waktu}\n\nPresensi pulang atas nama {data_nama}\nLama waktu: {existing_doc1.get('Total_waktu')}")
-    return {"msg":"Success"}
-
-
+        return jsonify({"message": "NoData",})
 telegram_thread = threading.Thread(target=telegram_polling_thread)
 telegram_thread.daemon = True  # Set the thread as a daemon so it exits when the main program exits
 telegram_thread.start()
 
-app.run(host="0.0.0.0", port=3019, ssl_context='adhoc')
-#app.run()
+app.run()
